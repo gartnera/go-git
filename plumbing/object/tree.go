@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	cache "github.com/Code-Hex/go-generics-cache"
+	"github.com/Code-Hex/go-generics-cache/policy/lru"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/hash"
@@ -43,14 +45,25 @@ type Tree struct {
 	t map[string]*Tree // tree path cache
 }
 
+var decodedTreeCache = cache.New(cache.AsLRU[[hash.Size]byte, *Tree](lru.WithCapacity(1000)))
+
 // GetTree gets a tree from an object storer and decodes it.
 func GetTree(s storer.EncodedObjectStorer, h plumbing.Hash) (*Tree, error) {
+	dt, ok := decodedTreeCache.Get(h)
+	if ok {
+		return dt, nil
+	}
 	o, err := s.EncodedObject(plumbing.TreeObject, h)
 	if err != nil {
 		return nil, err
 	}
 
-	return DecodeTree(s, o)
+	dt, err = DecodeTree(s, o)
+	if err != nil {
+		return nil, err
+	}
+	decodedTreeCache.Set(h, dt)
+	return dt, nil
 }
 
 // DecodeTree decodes an encoded object into a *Tree and associates it to the
